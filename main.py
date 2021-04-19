@@ -11,7 +11,7 @@ from models.pat_match import Pat_Match
 from models.soft_match import Soft_Match
 
 tqdm.monitor_interval = 0
-np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=np.inf)
 
 
 def read(config):
@@ -40,8 +40,8 @@ def read(config):
     counter = get_counter(train_data)
 
     emb_dict = read_glove(config.glove_word_file, counter, config.glove_word_size, config.glove_dim)
-    with open(config.emb_dict, "w") as fh:
-        json.dump(emb_dict, fh)
+    # with open(config.emb_dict, "w") as fh:
+    #     json.dump(emb_dict, fh)
     word2idx_dict, word_emb = token2id(config, counter, emb_dict)
 
     train_data = read_data(train_data)
@@ -53,6 +53,9 @@ def read(config):
 def train(config, data):
     word2idx_dict, word_emb, train_data, dev_data, test_data = data
     patterns = get_patterns(config, word2idx_dict)
+
+    print('train patterns')
+    # import pdb; pdb.set_trace()
 
     with tf.variable_scope("models"):
         if config.dataset == "tacred":

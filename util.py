@@ -81,21 +81,26 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
     length = config.length
     for i in range(len(data) // batch_size):
         batch = data[i * batch_size: (i + 1) * batch_size]
-        raw = list(map(lambda x: x["tokens"], batch))
+        # raw = list(map(lambda x: x["tokens"], batch))
         sent = np.asarray(list(map(lambda x: get_word(x["tokens"], word2idx_dict, pad=length), batch)), dtype=np.int32)
         mid = np.asarray(list(map(lambda x: get_word(x["tokens"][x["start"] - 1: x["end"] + 2], word2idx_dict, pad=length), batch)), dtype=np.int32)
         rel = np.asarray(list(map(lambda x: [1.0 if i == x["rel"] else 0. for i in range(config.num_class)], batch)), dtype=np.float32)
         pat = np.asarray(list(map(lambda x: x["pat"], batch)), dtype=np.int32)
-        yield {"sent": sent, "mid": mid, "rel": rel, "raw": raw, "pat": pat}
+        # yield {"sent": sent, "mid": mid, "rel": rel, "raw": raw, "pat": pat}
+        yield {"sent": sent, "mid": mid, "rel": rel, "pat": pat}
 
 
 def merge_batch(batch1, batch2):
     batch = {}
     for key in batch1.keys():
-        val1 = batch1[key]
-        val2 = batch2[key]
-        val = np.concatenate([val1, val2], axis=0)
-        batch[key] = val
+        try:
+            val1 = batch1[key]
+            val2 = batch2[key]
+            val = np.concatenate([val1, val2], axis=0)
+            batch[key] = val
+        except Exception as e:
+            print(key)
+            print(e)
     return batch
 
 

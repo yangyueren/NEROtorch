@@ -57,7 +57,7 @@ class Soft_Match(object):
         with tf.variable_scope("embedding"):
             sent_emb = tf.nn.embedding_lookup(self.word_mat, sent)
             mid_emb = tf.nn.embedding_lookup(self.word_mat, mid)
-            sent_emb = dropout(sent_emb, keep_prob=config.word_keep_prob, is_train=self.is_train, mode="embedding")
+            sent_emb = dropout(sent_emb, keep_prob=config.keep_prob, is_train=self.is_train, mode="embedding")
             pat_emb = tf.nn.embedding_lookup(self.word_mat, self.pats)
 
         with tf.variable_scope("encoder"):
@@ -104,7 +104,7 @@ class Soft_Match(object):
         self.pred = tf.argmax(pred, axis=1)
 
         self.loss = l_a + config.alpha * l_pat + config.beta * l_sim + config.gamma * l_u
-        self.sim_pred = tf.argmax(tf.gather(self.rels, tf.argmax(self.sim, axis=1)), axis=1)
-        self.sim_max_val = tf.reduce_max(self.sim, axis=1)
+        self.sim_pred = tf.argmax(tf.gather(self.rels, tf.argmax(sim, axis=1)), axis=1)
+        self.sim_max_val = tf.reduce_max(sim, axis=1)
         self.gold = tf.argmax(self.rel, axis=1)
         self.max_logit = tf.reduce_max(self.logit, axis=1)

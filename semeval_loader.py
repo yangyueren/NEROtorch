@@ -1,8 +1,14 @@
 from tqdm import tqdm
+import os
 from collections import Counter
 import numpy as np
 import ujson as json
 import copy
+import pickle as pkl
+import joblib
+import jieba.posseg as psg
+import jieba
+from gensim.models import Word2Vec, KeyedVectors
 import semeval_constant as constant
 
 
@@ -10,20 +16,33 @@ def entity_masks():
     masks = ["SUBJ-O", "OBJ-O"]
     subj_entities = list(constant.SUBJ_NER_TO_ID.keys())
     obj_entities = list(constant.OBJ_NER_TO_ID.keys())
-    masks += ["SUBJ-" + e for e in subj_entities]
-    masks += ["OBJ-" + e for e in obj_entities]
+    # masks += ["SUBJ-" + e for e in subj_entities]
+    # masks += ["OBJ-" + e for e in obj_entities]
+    masks += [e for e in subj_entities]
+    masks += [e for e in obj_entities]
     return masks
 
 
 def read_glove(path, counter, size, dim):
+    print('load word embedding...')
+    # embedding_dict = {}
+    # for i in ["钢铁行业", "受益", "供给", "侧", "改革", "，"]:
+    #     embedding_dict[i] = np.random.random(300)
+    # return embedding_dict
+    
+    # cache = './tmp/embedding_dict.pkl'
+    # if os.path.exists(cache):
+    #     embedding_dict = joblib.load(cache)
+    #     print('load word embedding done.')
+    #     return embedding_dict
+
+    w2v_model = Word2Vec.load('embedding_model/word_embedding_model.model')
     embedding_dict = {}
-    with open(path, "r", encoding="utf-8") as fh:
-        for line in tqdm(fh, total=size):
-            array = line.split()
-            word = "".join(array[0:-dim])
-            vector = list(map(float, array[-dim:]))
-            if word in counter:
-                embedding_dict[word] = vector
+    for k in tqdm(w2v_model.wv.index2word, total=len(w2v_model.wv.index2word)):
+        embedding_dict[k] = list(w2v_model[k])
+    
+    # joblib.dump(embedding_dict, cache)
+    print('load word embedding done.')
     return embedding_dict
 
 
