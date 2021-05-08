@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import json
-
+import math
 
 def get_pos(start, end, length, pad=None):
     res = list(range(-start, 0)) + [0] * (end - start + 1) + list(range(length - end - 1))
@@ -79,7 +79,8 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
         random.shuffle(data)
     batch_size = config.pseudo_size if pseudo else config.batch_size
     length = config.length
-    for i in range(len(data) // batch_size):
+    batches = math.ceil(len(data) / batch_size)
+    for i in range(batches):
         batch = data[i * batch_size: (i + 1) * batch_size]
         # raw = list(map(lambda x: x["tokens"], batch))
         sent = np.asarray(list(map(lambda x: get_word(x["tokens"], word2idx_dict, pad=length), batch)), dtype=np.int32)

@@ -54,6 +54,8 @@ def train(config, data):
     word2idx_dict, word_emb, train_data, dev_data, test_data = data
     patterns = get_patterns(config, word2idx_dict)
 
+
+
     print('train patterns')
     # import pdb; pdb.set_trace()
 
@@ -64,6 +66,9 @@ def train(config, data):
             import semeval_constant as constant
         regex = Pat_Match(config, constant.LABEL_TO_ID)
         match = Soft_Match(config, word_mat=word_emb, word2idx_dict=word2idx_dict)
+
+    
+
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.allow_growth = True
@@ -87,6 +92,19 @@ def train(config, data):
 
     dev_history, test_history = [], []
 
+    saver = tf.train.Saver(tf.global_variables())
+
+    
+    if config.train_mode == 'predict':
+        sess = restore_model_ckpt(config.checkpoint)
+        print('current model is to ' + config.train_mode)
+        best_entro = 0.1
+        (dev_acc, dev_rec, dev_f1), best_entro = log(config, dev_data, patterns, word2idx_dict, match, sess, "dev")
+        # (test_acc, test_rec, test_f1), _ = log(
+        #     config, test_data, patterns, word2idx_dict, match, sess, "test", entropy=best_entro)
+        # print(test_acc, test_rec, test_f1)
+        return config, test_data, patterns, word2idx_dict, match, sess, best_entro
+
     with tf.Session(config=sess_config) as sess:
 
         lr = float(config.init_lr)
@@ -106,6 +124,10 @@ def train(config, data):
             if len(dev_history) >= 1 and dev_f1 <= dev_history[-1][2]:
                 lr *= config.lr_decay
                 sess.run(tf.assign(match.lr, lr))
+            
+            if (len(dev_history) >= 1 and dev_f1 > dev_history[-1][2]) or len(dev_history) == 1:
+                checkpoint_path = config.checkpoint
+                saver.save(sess, checkpoint_path)
 
         max_idx = dev_history.index(max(dev_history, key=lambda x: x[2]))
         max_acc, max_rec, max_f1 = test_history[max_idx]
@@ -175,3 +197,47 @@ def evaluate(key, prediction):
     if prec_micro + recall_micro > 0.0:
         f1_micro = 2.0 * prec_micro * recall_micro / (prec_micro + recall_micro)
     return prec_micro, recall_micro, f1_micro
+
+
+def restore_model_ckpt(ckpt_file_path):
+    sess_config = tf.ConfigProto(allow_soft_placement=True)
+    sess_config.gpu_options.allow_growth = True
+    sess = tf.Session(config=sess_config)
+    # saver = tf.train.import_meta_graph('./checkpoint/model.ckpt.meta')  # 加载模型结构
+    saver = tf.train.Saver(tf.global_variables())
+    saver.restore(sess, tf.train.latest_checkpoint('./checkpoint'))  # 只需要指定目录就可以恢复所有变量信息
+    
+    return sess
+
+
+
+def predict(config, sentences, patterns, word2idx_dict, model, sess, label="train", entropy=None):
+    res = []
+    for line in sentences:
+        line = line.strip()
+        if len(line) > 0:
+            d = json.loads(line)
+            res.append(d)
+
+    from semeval_loader import read_glove, get_counter, token2id, read_data
+    data = read_data(res)
+
+    golds, preds, vals, sim_preds, sim_vals = [], [], [], [], []
+    for batch in get_batch(config, data, word2idx_dict):
+        gold, pred, val, sim_pred, sim_val = sess.run([model.gold, model.pred, model.max_val, model.sim_pred, model.sim_max_val],
+                                                      feed_dict=get_feeddict(model, batch, patterns, is_train=False))
+        golds += gold.tolist()
+        preds += pred.tolist()
+        vals += val.tolist()
+        sim_preds += sim_pred.tolist()
+        sim_vals += sim_val.tolist()
+
+    preds = (np.asarray(vals, dtype=np.float32) <= entropy).astype(np.int32) * np.asarray(preds, dtype=np.int32)
+    preds = preds.tolist()
+
+    acc, recall, f1 = evaluate(golds, preds)
+    ans = []
+    from semeval_constant import ID_TO_LABEL
+    for r, pred in zip(res, preds):
+        ans.append({'sentence': ''.join(r['tokens']), 'relation': ID_TO_LABEL[pred]})
+    return ans
