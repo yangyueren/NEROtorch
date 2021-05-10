@@ -87,17 +87,22 @@ class Soft_Match(object):
                 pat2_d = tf.reduce_sum(tf.expand_dims(pat_a, axis=2) * pat_d, axis=1)
 
                 logit = self.logit = dense(att2_d, config.num_class, use_bias=False)
-                pred = tf.nn.softmax(logit)
+                pred = tf.nn.softmax(logit) #所有句子预测出的relation
+
+                #预测确定pattern的句子推测其relation，训练 确定pattern的句子 -> relation
                 l_a = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logit[:config.batch_size], labels=self.rel[:config.batch_size]), axis=0)
 
-                xsim = tf.stop_gradient(sim[config.batch_size:])
+                xsim = tf.stop_gradient(sim[config.batch_size:]) # 不确定pattern的句子和pattern的相似度
+                #根据句子和pattern的相似度，预测句子对应的pattern，从pattern找出对应的relation
                 pseudo_rel = tf.gather(self.rels, tf.argmax(xsim, axis=1))
                 bound = tf.reduce_max(xsim, axis=1)
                 weight = tf.nn.softmax(10 * bound)
+                #对根据pattern推出来的relation计算loss，但是不反向传播pseudo_rel的那部分句子的loss 训练 句子->pattern -> relation
                 l_u = tf.reduce_sum(weight * tf.nn.softmax_cross_entropy_with_logits_v2(
                     logits=logit[config.batch_size:], labels=pseudo_rel), axis=0)
 
                 logit = dense(pat2_d, config.num_class, use_bias=False)
+                #预测pattern对应的relation
                 l_pat = self.pat_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logit, labels=self.rels), axis=0)
 
         self.max_val = tf.reduce_sum(pred * -log(pred), axis=1)

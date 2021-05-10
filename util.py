@@ -65,6 +65,10 @@ def get_patterns(config, word2idx_dict, filt=None):
     rels = np.asarray(rels, dtype=np.float32)
     pats = np.asarray(pats, dtype=np.int32)
     weights = np.ones([num_pats], dtype=np.float32)
+    """
+    rel: [0,1,0]
+    pat: embedding: 10*word_embedding_dim
+    """
     return {"rels": rels, "pats": pats, "weights": weights}
 
 
@@ -72,6 +76,21 @@ def get_feeddict(model, batch, patterns, is_train=True):
     return {model.sent: batch["sent"], model.rel: batch["rel"], model.mid: batch["mid"],
             model.hard: batch["pat"], model.rels: patterns["rels"], model.pats: patterns["pats"],
             model.weight: patterns["weights"], model.is_train: is_train}
+
+    """
+    
+    8是batchsize
+    sent: 8 * 110
+    mid: 8 * 110
+    rel: 8 * 3(3是rel_nums)
+    pat: 8, (每个数字代表对应的pattern_id), 如果无对应的，就是-1
+                
+
+    patterns：
+    rels: [[0,1,0], ...], pattern_num * rels, 每条pattern对应的relation
+    pats: embedding: 10*word_embedding_dim， 每条patterns的embedding
+    weights: pattern的权重, 维度: patterns_num
+    """
 
 
 def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=False):
@@ -88,6 +107,11 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
         rel = np.asarray(list(map(lambda x: [1.0 if i == x["rel"] else 0. for i in range(config.num_class)], batch)), dtype=np.float32)
         pat = np.asarray(list(map(lambda x: x["pat"], batch)), dtype=np.int32)
         # yield {"sent": sent, "mid": mid, "rel": rel, "raw": raw, "pat": pat}
+        """sent: batch * 110*word_embedding_dim
+            mid: batch * 110*word_embedding_dim
+            rel: batch * num_relations * 1
+            pat: batch * 1: 就是对应哪条pattern， -1代表没有对应的
+        """
         yield {"sent": sent, "mid": mid, "rel": rel, "pat": pat}
 
 

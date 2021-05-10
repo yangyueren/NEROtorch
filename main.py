@@ -87,6 +87,12 @@ def train(config, data):
             x["rel"] = 0
             unlabeled_data.append(x)
     patterns["weights"] = patterns["weights"] / np.sum(patterns["weights"])
+    """
+    patterns：
+    rels: [[0,1,0], ...], pattern_num * rels, 每条pattern对应的relation
+    pats: embedding: 10*word_embedding_dim， 每条patterns的embedding
+    weights: pattern的权重, 维度: patterns_num
+    """
     random.shuffle(unlabeled_data)
     print("{} labeled data".format(len(labeled_data)))
 
@@ -100,10 +106,10 @@ def train(config, data):
         print('current model is to ' + config.train_mode)
         best_entro = 0.1
         (dev_acc, dev_rec, dev_f1), best_entro = log(config, dev_data, patterns, word2idx_dict, match, sess, "dev")
-        # (test_acc, test_rec, test_f1), _ = log(
-        #     config, test_data, patterns, word2idx_dict, match, sess, "test", entropy=best_entro)
-        # print(test_acc, test_rec, test_f1)
-        return config, test_data, patterns, word2idx_dict, match, sess, best_entro
+        (test_acc, test_rec, test_f1), _ = log(
+            config, test_data, patterns, word2idx_dict, match, sess, "test", entropy=best_entro)
+        print(test_acc, test_rec, test_f1)
+        return test_acc, test_rec, test_f1
 
     with tf.Session(config=sess_config) as sess:
 
@@ -113,6 +119,13 @@ def train(config, data):
         for epoch in tqdm(range(1, config.num_epoch + 1), desc="Epoch"):
             for batch1, batch2 in zip(get_batch(config, labeled_data, word2idx_dict), get_batch(config, unlabeled_data, word2idx_dict, pseudo=True)):
                 batch = merge_batch(batch1, batch2)
+                """
+                8是batchsize
+                sent: 8 * 110
+                mid: 8 * 110
+                rel: 8 * 3(3是rel_nums)
+                pat: 8 (每个数字代表对应的pattern_id)
+                """
                 loss, _ = sess.run([match.loss, match.train_op], feed_dict=get_feeddict(match, batch, patterns))
 
             (dev_acc, dev_rec, dev_f1), best_entro = log(config, dev_data, patterns, word2idx_dict, match, sess, "dev")
@@ -210,34 +223,3 @@ def restore_model_ckpt(ckpt_file_path):
     return sess
 
 
-
-def predict(config, sentences, patterns, word2idx_dict, model, sess, label="train", entropy=None):
-    res = []
-    for line in sentences:
-        line = line.strip()
-        if len(line) > 0:
-            d = json.loads(line)
-            res.append(d)
-
-    from semeval_loader import read_glove, get_counter, token2id, read_data
-    data = read_data(res)
-
-    golds, preds, vals, sim_preds, sim_vals = [], [], [], [], []
-    for batch in get_batch(config, data, word2idx_dict):
-        gold, pred, val, sim_pred, sim_val = sess.run([model.gold, model.pred, model.max_val, model.sim_pred, model.sim_max_val],
-                                                      feed_dict=get_feeddict(model, batch, patterns, is_train=False))
-        golds += gold.tolist()
-        preds += pred.tolist()
-        vals += val.tolist()
-        sim_preds += sim_pred.tolist()
-        sim_vals += sim_val.tolist()
-
-    preds = (np.asarray(vals, dtype=np.float32) <= entropy).astype(np.int32) * np.asarray(preds, dtype=np.int32)
-    preds = preds.tolist()
-
-    acc, recall, f1 = evaluate(golds, preds)
-    ans = []
-    from semeval_constant import ID_TO_LABEL
-    for r, pred in zip(res, preds):
-        ans.append({'sentence': ''.join(r['tokens']), 'relation': ID_TO_LABEL[pred]})
-    return ans

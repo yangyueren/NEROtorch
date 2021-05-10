@@ -7,12 +7,9 @@ import random
 import numpy as np
 import jieba
 
-from main import train, read, predict
+from main import train, read
 
 
-from flask import Flask, flash, request
-
-app = Flask(__name__)
 
 
 flags = tf.flags
@@ -40,8 +37,8 @@ flags.DEFINE_string("test_file", "./data/brat_data/mannual_lable_test.json", "")
 flags.DEFINE_string("emb_dict", "./data/report/emb_dict.json", "")
 
 flags.DEFINE_string("checkpoint", "./checkpoint/model.ckpt", "")
-# 是否训练或测试
-flags.DEFINE_string("train_mode", "predict", "train or predict")
+
+flags.DEFINE_string("train_mode", "train", "train or predict")
 
 flags.DEFINE_integer("glove_word_size", int(2.2e6), "Corpus size for Glove")
 flags.DEFINE_integer("glove_dim", 300, "Embedding dimension for Glove")
@@ -67,13 +64,7 @@ flags.DEFINE_float("tau", 0.7, "Weight of tau")
 flags.DEFINE_list("patterns", [], "pattern list")
 
 
-g_config = None
-g_test_data = None
-g_patterns = None
-g_word2idx_dict = None
-g_match = None
-g_sess = None
-g_best_entro = None
+
 
 def seed_tensorflow(seed=42):
     
@@ -90,92 +81,14 @@ def main(_):
         patterns = json.load(fh)
     config.patterns = patterns
     data = read(config)
-    if config.train_mode == 'predict':
-        config, test_data, patterns, word2idx_dict, match, sess, best_entro = train(config, data)
 
-        global g_config
-        global g_test_data
-        global g_patterns
-        global g_word2idx_dict
-        global g_match
-        global g_sess
-        global g_best_entro
-
-        g_config, g_test_data, g_patterns, g_word2idx_dict, g_match, g_sess, g_best_entro = \
-            config, test_data, patterns, word2idx_dict, match, sess, best_entro
-
-        print('wait for sentences to input')
-        # res = []
-        # with open(config.test_file, "r") as fh:
-        #     for line in fh:
-        #         line = line.strip()
-        #         if len(line) > 0:
-        #             res.append(line)
-        
-
-        # predict(g_config, res, g_patterns, g_word2idx_dict, g_match, g_sess, 'test', entropy=g_best_entro)
-    else:
-        train(config, data)
+    train(config, data)
     
 
 
 
 
-def convert(sentence):
-    tokens = jieba.lcut(sentence)
-    tokens = [t for t in tokens if t != '' and t != ' ']
-    ss, se = -1, -1
-    os, oe = -1, -1
-    for idx in range(len(tokens)):
-        if tokens[idx] == 'SUBJCompany':
-            ss = idx
-            se = idx
-        if tokens[idx] == 'OBJProduct':
-            os = idx
-            oe = idx
-        if tokens[idx] == 'OBJCompany':
-            os = idx
-            oe = idx
-    assert ss >= 0 and se >= 0, 'error'
-    assert os >= 0 and oe >= 0, 'error'
-    json_data = {
-        'tokens': tokens,
-        'subj_start': ss,
-        'subj_end': se,
-        'obj_start': os,
-        'obj_end': oe,
-        'relation': 'no_relation'
-    }
-    json_data = json.dumps(json_data, ensure_ascii=False)
-    return json_data
-
-
-@app.route('/')
-def home():
-    return '<h1>hello world</h1>'
-
-@app.route('/process', methods=['POST'])
-def process():
-    global g_config
-    global g_test_data
-    global g_patterns
-    global g_word2idx_dict
-    global g_match
-    global g_sess
-    global g_best_entro
-    if request.method == 'POST':
-        data = request.get_data()
-        data = json.loads(data)['sentences']
-        sentences = [convert(d) for d in data]
-        
-        ans = predict(g_config, sentences, g_patterns, g_word2idx_dict, g_match, g_sess, 'test', entropy=g_best_entro)
-        return json.dumps({'code': 200, 'msg': ans}, ensure_ascii=False)
-    else:
-        return json.dumps({'code': -1, 'msg': 'please use post.'}, ensure_ascii=False)
-
-main(_='')
 
 if __name__ == "__main__":
     seed_tensorflow()
-    # tf.app.run()
-    app.run(debug=True, host='0.0.0.0', port=20003)
+    tf.app.run()
