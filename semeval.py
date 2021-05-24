@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 import os
-import tensorflow as tf
+import torch
+import argparse
 import semeval_constant as constant
 import json
 import random
@@ -10,77 +11,73 @@ import jieba
 from main import train, read
 
 
+parser = argparse.ArgumentParser(description='NERO args.')
 
 
-flags = tf.flags
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-flags.DEFINE_string("dataset", "semeval", "")
-flags.DEFINE_string("mode", "regd", "pretrain / pseudo / regd")
-flags.DEFINE_string("gpu", "3", "The GPU to run on")
+parser.add_argument("--dataset", type=str, default="semeval", help='')
+parser.add_argument("--mode", type=str, default="regd", help="pretrain / pseudo / regd")
+parser.add_argument("--gpu", type=str, default="3", help="The GPU to run on")
 
 
-flags.DEFINE_string("pattern_file", "./data/report/yanbao_ic_pattern.json", "")
-flags.DEFINE_string("target_dir", "data", "")
-flags.DEFINE_string("log_dir", "log/event", "")
-flags.DEFINE_string("save_dir", "log/model", "")
-flags.DEFINE_string("glove_word_file", "./data/glove/glove.840B.300d.txt", "")
+parser.add_argument("--pattern_file", type=str, default="./data/report/yanbao_ic_pattern.json", help="")
+parser.add_argument("--target_dir", type=str, default="data", help="")
+parser.add_argument("--log_dir", type=str, default="log/event", help="")
+parser.add_argument("--save_dir", type=str, default="log/model", help="")
+parser.add_argument("--glove_word_file", type=str, default="./data/glove/glove.840B.300d.txt", help="")
 
-# flags.DEFINE_string("train_file", "./data/report/train.json", "")
-# flags.DEFINE_string("dev_file", "./data/report/dev.json", "")
-# flags.DEFINE_string("test_file", "./data/report/test.json", "")
 
-flags.DEFINE_string("train_file", "./data/report/train.json", "")
-flags.DEFINE_string("dev_file", "./data/brat_data/mannual_lable_test.json", "")
-flags.DEFINE_string("test_file", "./data/brat_data/mannual_lable_test.json", "")
+parser.add_argument("--train_file", type=str, default="./data/report/train.json", help="")
+parser.add_argument("--dev_file", type=str, default="./data/brat_data/mannual_lable_test.json", help="")
+parser.add_argument("--test_file", type=str, default="./data/brat_data/mannual_lable_test.json", help="")
 
-flags.DEFINE_string("emb_dict", "./data/report/emb_dict.json", "")
+parser.add_argument("--emb_dict", type=str, default="./data/report/emb_dict.json", help="")
 
-flags.DEFINE_string("checkpoint", "./checkpoint/model.ckpt", "")
+parser.add_argument("--checkpoint", type=str, default="./checkpoint/model.ckpt", help="")
 
-flags.DEFINE_string("train_mode", "train", "train or predict")
+parser.add_argument("--train_mode", type=str, default="train", help="train or predict")
 
-flags.DEFINE_integer("glove_word_size", int(2.2e6), "Corpus size for Glove")
-flags.DEFINE_integer("glove_dim", 300, "Embedding dimension for Glove")
-flags.DEFINE_integer("top_k", 100000, "Finetune top k words in embedding")
-flags.DEFINE_integer("length", 110, "Limit length for sentence")
-flags.DEFINE_integer("num_class", len(constant.LABEL_TO_ID), "Number of classes")
-flags.DEFINE_string("tag", "", "The tag name of event files")
+parser.add_argument("--glove_word_size", type=int, default=int(2.2e6), help="Corpus size for Glove")
+parser.add_argument("--glove_dim", type=int, default=300, help="Embedding dimension for Glove")
+parser.add_argument("--top_k", type=int, default=100000, help="Finetune top k words in embedding")
+parser.add_argument("--length", type=int, default=110, help="Limit length for sentence")
+parser.add_argument("--num_class", type=int, default=len(constant.LABEL_TO_ID), help="Number of classes")
 
-flags.DEFINE_integer("batch_size", 8, "Batch size")
-flags.DEFINE_integer("pseudo_size", 8, "Batch size for pseudo labeling")
-flags.DEFINE_integer("num_epoch", 4, "Number of epochs")
-flags.DEFINE_float("init_lr", 0.5, "Initial lr")
-flags.DEFINE_float("lr_decay", 0.95, "Decay rate")
-flags.DEFINE_float("keep_prob", 0.5, "Keep prob in dropout")
-flags.DEFINE_float("grad_clip", 5.0, "Global Norm gradient clipping rate")
-flags.DEFINE_integer("hidden", 200, "Hidden size")
-flags.DEFINE_integer("att_hidden", 200, "Hidden size for attention")
 
-flags.DEFINE_float("alpha", 0.1, "Weight of pattern RE")
-flags.DEFINE_float("beta", 0.2, "Weight of similarity score")
-flags.DEFINE_float("gamma", 0.5, "Weight of pseudo label")
-flags.DEFINE_float("tau", 0.7, "Weight of tau")
-flags.DEFINE_list("patterns", [], "pattern list")
+parser.add_argument("--gt_batch_size", type=int, default=32, help="Batch size")
+parser.add_argument("--pseudo_size", type=int, default=32, help="Batch size for pseudo labeling")
+parser.add_argument("--num_epoch", type=int, default=200, help="Number of epochs")
+parser.add_argument("--init_lr", type=float, default=0.00001, help="Initial lr")
+parser.add_argument("--lr_decay", type=float, default=0.65, help="Decay rate")
+parser.add_argument("--keep_prob", type=float, default=0.7, help="Keep prob in dropout")
+parser.add_argument("--grad_clip", type=float, default=5.0, help="Global Norm gradient clipping rate")
+parser.add_argument("--hidden", type=int, default=150, help="Hidden size")
+parser.add_argument("--att_hidden", type=int, default=150, help="Hidden size for attention")
+
+parser.add_argument("--alpha", type=float, default=0.1, help="Weight of pattern RE")
+parser.add_argument("--beta", type=float, default=0.2, help="Weight of similarity score")
+parser.add_argument("--gamma", type=float, default=0.5, help="Weight of pseudo label")
+parser.add_argument("--tau", type=float, default=0.7, help="Weight of tau")
+parser.add_argument("--patterns", type=list, default=[], help="pattern list")
 
 
 
 
-def seed_tensorflow(seed=42):
+def seed_torch(seed=42):
     
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
-    tf.set_random_seed(seed)
+    torch.random.manual_seed(seed)
 
-def main(_):
-    config = flags.FLAGS
-    os.environ["CUDA_VISIBLE_DEVICES"] = config.gpu
+def main():
+    config = parser.parse_args()
 
     with open(config.pattern_file, "r") as fh:
         patterns = json.load(fh)
+    print(config)
     config.patterns = patterns
     data = read(config)
+    
 
     train(config, data)
     
@@ -90,5 +87,5 @@ def main(_):
 
 
 if __name__ == "__main__":
-    seed_tensorflow()
-    tf.app.run()
+    seed_torch()
+    main()

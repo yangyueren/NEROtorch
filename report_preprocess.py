@@ -228,7 +228,7 @@ def get_pattern(datas, pattern_path):
         mini = min(subj_start, obj_start)
         tokens = data['tokens'][mini: maxi+1]
         pattern = " ".join(tokens)
-        if len(pattern) < 100 and random.random() > 0.97:
+        if len(pattern) < 200 and random.random() > 0.7:
             patterns.append([data['relation'],pattern])
             num += 1
     with open(pattern_path, 'w') as g:

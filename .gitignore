@@ -5,3 +5,4 @@
 nohup.out
 /checkpoint
 /tmp
+/pretrain_models

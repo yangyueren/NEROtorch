@@ -2,6 +2,9 @@ import random
 import numpy as np
 import json
 import math
+import torch.nn.init as init
+import torch.nn as nn
+import torch
 
 def get_pos(start, end, length, pad=None):
     res = list(range(-start, 0)) + [0] * (end - start + 1) + list(range(length - end - 1))
@@ -41,10 +44,8 @@ def get_id(tokens, idx_dict, pad=None):
 
 
 def get_patterns(config, word2idx_dict, filt=None):
-    if config.dataset == "tacred":
-        import tacred_constant as constant
-    else:
-        import semeval_constant as constant
+
+    import semeval_constant as constant
     patterns = config.patterns
     rels, pats = [], []
     for pattern in patterns:
@@ -67,9 +68,9 @@ def get_patterns(config, word2idx_dict, filt=None):
     weights = np.ones([num_pats], dtype=np.float32)
     """
     rel: [0,1,0]
-    pat: embedding: 10*word_embedding_dim
+    pat: embedding: 10*word_idx
     """
-    return {"rels": rels, "pats": pats, "weights": weights}
+    return {"pattern_rels": rels, "pats": pats, "weights": weights}
 
 
 def get_feeddict(model, batch, patterns, is_train=True):
@@ -88,7 +89,7 @@ def get_feeddict(model, batch, patterns, is_train=True):
 
     patterns：
     rels: [[0,1,0], ...], pattern_num * rels, 每条pattern对应的relation
-    pats: embedding: 10*word_embedding_dim， 每条patterns的embedding
+    pats: pattern_num*token_len 每条patterns的token表示
     weights: pattern的权重, 维度: patterns_num
     """
 
@@ -96,7 +97,7 @@ def get_feeddict(model, batch, patterns, is_train=True):
 def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=False):
     if shuffle:
         random.shuffle(data)
-    batch_size = config.pseudo_size if pseudo else config.batch_size
+    batch_size = config.pseudo_size if pseudo else config.gt_batch_size
     length = config.length
     batches = math.ceil(len(data) / batch_size)
     for i in range(batches):
@@ -107,8 +108,8 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
         rel = np.asarray(list(map(lambda x: [1.0 if i == x["rel"] else 0. for i in range(config.num_class)], batch)), dtype=np.float32)
         pat = np.asarray(list(map(lambda x: x["pat"], batch)), dtype=np.int32)
         # yield {"sent": sent, "mid": mid, "rel": rel, "raw": raw, "pat": pat}
-        """sent: batch * 110*word_embedding_dim
-            mid: batch * 110*word_embedding_dim
+        """sent: batch * 110*1
+            mid: batch * 110*1
             rel: batch * num_relations * 1
             pat: batch * 1: 就是对应哪条pattern， -1代表没有对应的
         """
@@ -133,3 +134,72 @@ def sample_data(config, data):
     random.shuffle(data)
     num = len(data)
     return data[:int(config.sample * num)]
+
+
+
+def weight_init(m):
+        '''
+        Usage:
+            model = Model()
+            model.apply(weight_init)
+        '''
+        if isinstance(m, nn.Conv1d):
+            init.normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.Conv2d):
+            init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.Conv3d):
+            init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.ConvTranspose1d):
+            init.normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.ConvTranspose2d):
+            init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.ConvTranspose3d):
+            init.xavier_normal_(m.weight.data)
+            if m.bias is not None:
+                init.normal_(m.bias.data)
+        elif isinstance(m, nn.BatchNorm1d):
+            init.normal_(m.weight.data, mean=1, std=0.02)
+            init.constant_(m.bias.data, 0)
+        elif isinstance(m, nn.BatchNorm2d):
+            init.normal_(m.weight.data, mean=1, std=0.02)
+            init.constant_(m.bias.data, 0)
+        elif isinstance(m, nn.BatchNorm3d):
+            init.normal_(m.weight.data, mean=1, std=0.02)
+            init.constant_(m.bias.data, 0)
+        elif isinstance(m, nn.Linear):
+            init.xavier_normal_(m.weight.data)
+            init.normal_(m.bias.data)
+        elif isinstance(m, nn.LSTM):
+            for param in m.parameters():
+                if len(param.shape) >= 2:
+                    init.orthogonal_(param.data)
+                else:
+                    init.normal_(param.data)
+        elif isinstance(m, nn.LSTMCell):
+            for param in m.parameters():
+                if len(param.shape) >= 2:
+                    init.orthogonal_(param.data)
+                else:
+                    init.normal_(param.data)
+        elif isinstance(m, nn.GRU):
+            for param in m.parameters():
+                if len(param.shape) >= 2:
+                    init.orthogonal_(param.data)
+                else:
+                    init.normal_(param.data)
+        elif isinstance(m, nn.GRUCell):
+            for param in m.parameters():
+                if len(param.shape) >= 2:
+                    init.orthogonal_(param.data)
+                else:
+                    init.normal_(param.data)

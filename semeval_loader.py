@@ -25,23 +25,12 @@ def entity_masks():
 
 def read_glove(path, counter, size, dim):
     print('load word embedding...')
-    # embedding_dict = {}
-    # for i in ["钢铁行业", "受益", "供给", "侧", "改革", "，"]:
-    #     embedding_dict[i] = np.random.random(300)
-    # return embedding_dict
-    
-    # cache = './tmp/embedding_dict.pkl'
-    # if os.path.exists(cache):
-    #     embedding_dict = joblib.load(cache)
-    #     print('load word embedding done.')
-    #     return embedding_dict
 
     w2v_model = Word2Vec.load('embedding_model/word_embedding_model.model')
     embedding_dict = {}
     for k in tqdm(w2v_model.wv.index2word, total=len(w2v_model.wv.index2word)):
         embedding_dict[k] = list(w2v_model[k])
-    
-    # joblib.dump(embedding_dict, cache)
+
     print('load word embedding done.')
     return embedding_dict
 
