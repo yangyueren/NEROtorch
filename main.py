@@ -8,7 +8,8 @@ from collections import Counter
 from util import get_batch, get_patterns, merge_batch, weight_init
 
 from models.pat_match import Pat_Match
-from models.soft_match_torch import SoftMatch
+# from models.soft_match_torch import SoftMatch
+from models.soft_match_bert import SoftMatch
 
 tqdm.monitor_interval = 0
 np.set_printoptions(threshold=np.inf)
@@ -56,10 +57,11 @@ def train(config, data):
     import semeval_constant as constant
     regex = Pat_Match(config, constant.LABEL_TO_ID)
     match = SoftMatch(config, word_mat=word_emb, word2idx_dict=word2idx_dict)
-    device = torch.device(f"cuda:{config.gpu}" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{config.gpu}" if torch.cuda.is_available() and int(config.gpu) >= 0 else "cpu")
     config.device = device
+
     match.to(device)
-    match.apply(weight_init)
+    # match.apply(weight_init)
 
 
     labeled_data = []
@@ -90,10 +92,12 @@ def train(config, data):
 
     lr = float(config.init_lr)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, match.parameters()), lr=lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=config.lr_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=config.lr_decay)
+    match.train()
+
+    # import pdb;pdb.set_trace()
 
     for epoch in tqdm(range(1, config.num_epoch + 1), desc="Epoch"):
-        match.train()
         idx = 0
         for batch1, batch2 in zip(get_batch(config, labeled_data, word2idx_dict), get_batch(config, unlabeled_data, word2idx_dict, pseudo=True)):
             batch = merge_batch(batch1, batch2)
@@ -104,24 +108,28 @@ def train(config, data):
             rel: 8 * 3(3是rel_nums)
             pat: 8 (每个数字代表对应的pattern_id)
             """
-            
-            golds, preds, val, loss = match(batch["sent"], batch["mid"], batch["rel"],
+            # import pdb; pdb.set_trace()
+            golds, preds, val, loss = match(batch['raw'], patterns['raws'], batch['raw_mask'], patterns['raw_masks'],
+                                             batch["sent"], batch["mid"], batch["rel"],
                                             batch["pat"], patterns["pattern_rels"], patterns["pats"], patterns["weights"])
             
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(match.parameters(), config.grad_clip)
             optimizer.step()
-            if idx % 5 == 0:
+            if idx % 2 == 0:
                 print(loss.detach())
-                idx += 1
+            idx += 1
+            
 
-        # scheduler.step()
-        if epoch % 40 == 0 and epoch > 0:
+        scheduler.step()
+        if epoch % 5 == 0 and epoch > 0:
             (dev_acc, dev_rec, dev_f1), best_entro = log(config, dev_data, patterns, word2idx_dict, match, "dev")
             (test_acc, test_rec, test_f1), _ = log(
                 config, test_data, patterns, word2idx_dict, match, "test", entropy=best_entro)
-            print(dev_acc, dev_rec, dev_f1)
-            print(test_acc, test_rec, test_f1)
+
+            print("acc: {}, rec: {}, f1: {}".format(dev_acc, dev_rec, dev_f1))
+            print("acc: {}, rec: {}, f1: {}".format(test_acc, test_rec, test_f1))
             dev_history.append((dev_acc, dev_rec, dev_f1))
             test_history.append((test_acc, test_rec, test_f1))
 
@@ -141,14 +149,15 @@ def log(config, data, patterns, word2idx_dict, model, label="train", entropy=Non
     with torch.no_grad():
         golds, preds, vals = [], [], []
         for batch in get_batch(config, data, word2idx_dict):
-            gold, pred, val, loss = model(batch["sent"], batch["mid"], batch["rel"],
-                                                batch["pat"], patterns["pattern_rels"], patterns["pats"], patterns["weights"], is_train=False)
+            gold, pred, val, loss = model(batch['raw'], patterns['raws'], batch['raw_mask'], patterns['raw_masks'],
+                                            batch["sent"], batch["mid"], batch["rel"], batch["pat"], 
+                                            patterns["pattern_rels"], patterns["pats"], patterns["weights"], is_train=False)
             golds += gold.tolist()
             preds += pred.tolist()
             vals += val.tolist()
 
 
-    threshold = [0.01 * i for i in range(1, 200)]
+    threshold = [0.1 * i for i in range(1, 200)]
     acc, recall, f1 = 0., 0., 0.
     best_entro = 0.
 
@@ -158,6 +167,7 @@ def log(config, data, patterns, word2idx_dict, model, label="train", entropy=Non
             _preds = _preds.tolist()
             _acc, _recall, _f1 = evaluate(golds, _preds)
             if _f1 > f1:
+            # if _acc > acc:
                 acc, recall, f1 = _acc, _recall, _f1
                 best_entro = t
     else:

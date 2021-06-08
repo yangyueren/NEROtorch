@@ -5,6 +5,14 @@ import json
 import jieba
 import itertools
 
+
+
+relation_dict = {
+    '供应': ('SUBJCompany', 'OBJCompany', 'supply_relation'),
+    '供应产品': ('SUBJCompany', 'OBJProduct', 'supply_product_relation'),
+    '合作': ('SUBJCompany', 'OBJCompany', 'cooperate_relation'),
+}
+
 def list_txt_ann(brat_raw_folder):
     files = os.listdir(brat_raw_folder)
     files = sorted(files)
@@ -12,7 +20,7 @@ def list_txt_ann(brat_raw_folder):
         if 'txt' in file:
             yield os.path.join(brat_raw_folder, file), os.path.join(brat_raw_folder, file.replace('txt', 'ann'))
 
-def process_one_file_junk(txt, ann, only_mid=True):
+def process_one_file_junk(txt, ann, only_mid=False):
     """
     把除ann中标注的具有供应关系的实体的实体对取出来，作为no_relation
     @param: only_mid: 是否只截取出中间部分
@@ -52,12 +60,33 @@ def process_one_file_junk(txt, ann, only_mid=True):
             supply_pairs.add((arg1, arg2))
             supply_pairs.add((arg2, arg1))
 
+
+        exists_set = set()
         for arg1 in T:
+
+            if T[arg1] == '产品':
+                continue
+
             for arg2 in T:
                 if arg1 == arg2:
                     continue
                 if (arg1, arg2) in supply_pairs:
                     continue
+                if (arg1, arg2) in exists_set:
+                    continue
+
+                if T[arg1] == '产品':
+                    continue
+                else:
+                    subj = 'SUBJCompany'
+
+                if T[arg2] == '产品':
+                    obj = 'OBJProduct'
+                else:
+                    obj = 'OBJCompany'
+                
+                exists_set.add((arg1, arg2))
+                exists_set.add((arg2, arg1))
 
                 def to_tokens(_sentence, _subj, _obj, abort_entities=False):
                     _subj = ' ' + _subj + ' '
@@ -78,9 +107,6 @@ def process_one_file_junk(txt, ann, only_mid=True):
                     ans = [t.strip() for t in _tokens if t != ' ' and t != '  ']
                     return ans
 
-                _type = '供应'
-                subj = 'SUBJCompany'
-                obj = 'OBJCompany'
                 relation = 'no_relation'
                 tokens = to_tokens(sentence, subj, obj, abort_entities=False)
                 
@@ -109,7 +135,7 @@ def process_one_file_junk(txt, ann, only_mid=True):
     return ans_sents
 
 
-def process_one_file(txt, ann, only_mid=True):
+def process_one_file(txt, ann, only_mid=False):
     """
     把ann中标注的两个实体拿出来
     @param: only_mid: 是否只截取出中间部分
@@ -164,18 +190,21 @@ def process_one_file(txt, ann, only_mid=True):
                 ans = [t.strip() for t in _tokens if t != ' ' and t != '  ']
                 return ans
 
-            if _type == '生产':
-                subj = 'SUBJCompany'
-                obj = 'OBJProduct'
-                relation = 'produce_relation'
-                tokens = to_tokens(sentence, subj, obj, abort_entities=False)
+            # if _type == '生产':
+            #     subj = 'SUBJCompany'
+            #     obj = 'OBJProduct'
+            #     relation = 'produce_relation'
+            #     tokens = to_tokens(sentence, subj, obj, abort_entities=False)
                 
-            elif _type == '供应':
-                subj = 'SUBJCompany'
-                obj = 'OBJCompany'
-                relation = 'supply_relation'
-                tokens = to_tokens(sentence, subj, obj, abort_entities=False)
+            # elif _type == '供应':
+            #     subj = 'SUBJCompany'
+            #     obj = 'OBJCompany'
+            #     relation = 'supply_relation'
+            #     tokens = to_tokens(sentence, subj, obj, abort_entities=False)
             
+            subj, obj, relation = relation_dict[_type]
+            tokens = to_tokens(sentence, subj, obj, abort_entities=False)
+
             # 找到头 尾 实体的位置
             def find_pos(_tokens, _subj, _obj):
                 s, e = -1, -1
@@ -208,12 +237,80 @@ def process(brat_raw_folder, brat_output_folder):
             cur += process_one_file_junk(txt, ann)
         ans += cur
     random.shuffle(ans)
-    with open(os.path.join(brat_output_folder, 'mannual_lable_test.json'), 'w') as f:
+    with open(os.path.join(brat_output_folder, 'mannual_lable_supply.json'), 'w') as f:
         for i in ans:
             f.write(i)
             f.write('\n')
 
+
+def get_pattern(datas, pattern_path):
+    
+    patterns = []
+    num = 0
+    for line in datas:
+        data = json.loads(line)
+        subj_start = data['subj_start']
+        obj_start = data['obj_start']
+        maxi = min(max(subj_start, obj_start) + 2, len(data['tokens']))
+        mini = max(min(subj_start, obj_start) - 2, 0)
+        tokens = data['tokens'][mini: maxi+1]
+        pattern = " ".join(tokens)
+        if len(pattern) < 200 and random.random() > 0.85:
+            patterns.append([data['relation'],pattern])
+            num += 1
+    with open(pattern_path, 'w') as g:
+        json_data = json.dumps(patterns, ensure_ascii=False)
+        g.write(json_data)
+        g.write('\n')
+    print('Generate %d patterns.' % num)
+
+
+def combine():
+    root = '/home/ps/disk_sdb/yyr/codes/NEROtorch/data/supply_cooperate_20210518_data/'
+    output_path1 = '/home/ps/disk_sdb/yyr/codes/NEROtorch/data/supply_cooperate_20210518_data/mannual_lable_cooperate.json'
+    output_path2 = '/home/ps/disk_sdb/yyr/codes/NEROtorch/data/supply_cooperate_20210518_data/mannual_lable_supply.json'
+    pattern_path = os.path.join(root, 'yanbao_ic_pattern.json')
+    train_path = os.path.join(root, 'train.json')
+    test_path = os.path.join(root, 'test.json')
+
+    datas = []
+    def read(path, num=1000000000):
+        f1 = open(path, 'r')
+        idx = 0
+        for line in f1:
+            datas.append(line.strip())
+            idx += 1
+            if idx > num:
+                break
+        f1.close()
+    read(output_path1)
+    read(output_path2)
+
+    random.shuffle(datas)
+    train = open(train_path, 'w')
+    # dev = open(dev_path, 'w')
+    test = open(test_path, 'w')
+    train_datas = []
+    for line in datas:
+        t = random.random()
+        if t < 0.7:
+            train.write(line)
+            train_datas.append(line)
+            train.write('\n')
+        # elif t > 0.9:
+        #     dev.write(line)
+        #     dev.write('\n')
+        else:
+            test.write(line)
+            test.write('\n')
+    get_pattern(train_datas, pattern_path)
+    
+
 if __name__ == '__main__':
     brat_raw_folder = '/home/ps/disk_sdb/yyr/codes/NEROzh/data/brat_raw'
     brat_output_folder = '/home/ps/disk_sdb/yyr/codes/NEROzh/data/brat_data'
-    process(brat_raw_folder, brat_output_folder)
+
+    cooperate_folder = '/home/ps/disk_sdb/yyr/codes/NEROtorch/data/supply_cooperate_20210518_raw/supply'
+    cooperate_output_folder = '/home/ps/disk_sdb/yyr/codes/NEROtorch/data/supply_cooperate_20210518_data/'
+    # process(cooperate_folder, cooperate_output_folder)
+    combine()

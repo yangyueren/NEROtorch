@@ -16,21 +16,22 @@ parser = argparse.ArgumentParser(description='NERO args.')
 
 parser.add_argument("--dataset", type=str, default="semeval", help='')
 parser.add_argument("--mode", type=str, default="regd", help="pretrain / pseudo / regd")
-parser.add_argument("--gpu", type=str, default="3", help="The GPU to run on")
+parser.add_argument("--gpu", type=str, default="1", help="The GPU to run on")
 
 
-parser.add_argument("--pattern_file", type=str, default="./data/report/yanbao_ic_pattern.json", help="")
+parser.add_argument("--pattern_file", type=str, default="./data/supply_cooperate_20210518_data/yanbao_ic_pattern.json", help="")
 parser.add_argument("--target_dir", type=str, default="data", help="")
-parser.add_argument("--log_dir", type=str, default="log/event", help="")
-parser.add_argument("--save_dir", type=str, default="log/model", help="")
+parser.add_argument("--log_dir", type=str, default="./log/event", help="")
+parser.add_argument("--save_dir", type=str, default="./log/model", help="")
 parser.add_argument("--glove_word_file", type=str, default="./data/glove/glove.840B.300d.txt", help="")
 
 
-parser.add_argument("--train_file", type=str, default="./data/report/train.json", help="")
-parser.add_argument("--dev_file", type=str, default="./data/brat_data/mannual_lable_test.json", help="")
-parser.add_argument("--test_file", type=str, default="./data/brat_data/mannual_lable_test.json", help="")
 
-parser.add_argument("--emb_dict", type=str, default="./data/report/emb_dict.json", help="")
+parser.add_argument("--train_file", type=str, default="./data/supply_cooperate_20210518_data/train.json", help="")
+parser.add_argument("--dev_file", type=str, default="./data/supply_cooperate_20210518_data/test.json", help="")
+parser.add_argument("--test_file", type=str, default="./data/supply_cooperate_20210518_data/test.json", help="")
+
+parser.add_argument("--emb_dict", type=str, default="./data/supply_cooperate_20210518_data/emb_dict.json", help="")
 
 parser.add_argument("--checkpoint", type=str, default="./checkpoint/model.ckpt", help="")
 
@@ -45,9 +46,9 @@ parser.add_argument("--num_class", type=int, default=len(constant.LABEL_TO_ID), 
 
 parser.add_argument("--gt_batch_size", type=int, default=32, help="Batch size")
 parser.add_argument("--pseudo_size", type=int, default=32, help="Batch size for pseudo labeling")
-parser.add_argument("--num_epoch", type=int, default=200, help="Number of epochs")
-parser.add_argument("--init_lr", type=float, default=0.00001, help="Initial lr")
-parser.add_argument("--lr_decay", type=float, default=0.65, help="Decay rate")
+parser.add_argument("--num_epoch", type=int, default=20, help="Number of epochs")
+parser.add_argument("--init_lr", type=float, default=0.0001, help="Initial lr")
+parser.add_argument("--lr_decay", type=float, default=0.7, help="Decay rate")
 parser.add_argument("--keep_prob", type=float, default=0.7, help="Keep prob in dropout")
 parser.add_argument("--grad_clip", type=float, default=5.0, help="Global Norm gradient clipping rate")
 parser.add_argument("--hidden", type=int, default=150, help="Hidden size")

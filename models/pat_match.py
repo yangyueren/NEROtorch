@@ -29,9 +29,11 @@ class Pat_Match(object):
             for j, token in enumerate(tokens):
                 text = " ".join(token)
                 if pat in text:
+                    # print(text)
+                    # print(pat)
                     res[j, i] += 1
                     pred[j, rel] += 1
-
+        
         none_zero = (np.amax(pred, axis=1) > 0).astype(np.int32)
         pred = np.argmax(pred, axis=1)
         pred = pred * none_zero

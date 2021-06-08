@@ -7,6 +7,7 @@ import os
 
 from transformers import BertModel
 from transformers import BertPreTrainedModel
+from transformers import BertTokenizer
 
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
@@ -15,7 +16,7 @@ class Attention(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(Attention, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, 1, bias=False)
+        self.fc2 = nn.Linear(hidden_size, 1)
 
 
     def softmax_mask(self, val, mask):
@@ -41,6 +42,12 @@ class SoftMatch(nn.Module):
         super(SoftMatch, self).__init__()
         self.config = config
 
+        self.bert = BertModel.from_pretrained('/home/ps/disk_sdb/yyr/codes/NEROtorch/pretrain_models/bert')
+        self.bert_no_grad = BertModel.from_pretrained('/home/ps/disk_sdb/yyr/codes/NEROtorch/pretrain_models/bert')
+        
+        for name ,param in self.bert_no_grad.named_parameters():
+            param.requires_grad = False
+
 
         self.hidden_size = self.config.hidden
         self.embedding_dim = self.config.glove_dim
@@ -49,38 +56,30 @@ class SoftMatch(nn.Module):
         self.embedding = nn.Embedding.from_pretrained(torch.from_numpy(np.array(word_mat)))
         self.embedding.weight.requires_grad = False
 
-        self.rnn = nn.LSTM(self.embedding_dim, self.hidden_size, 2)
-        self.attention_model = Attention(self.hidden_size, self.hidden_size)
-        self.attention_model2 = Attention(self.embedding_dim, self.hidden_size)
+        self.attention_model = Attention(self.embedding_dim, self.hidden_size)
 
-        self.fc_sent2rel = nn.Linear(self.hidden_size, self.config.num_class, bias=False)
+        self.fc_sent2rel = nn.Linear(768, self.config.num_class)
+        self.fc_pat2rel = nn.Linear(768, self.config.num_class)
 
 
     def get_embedding(self, sent):
 
         return self.embedding(sent)
 
-    def encoder(self, sent_embedding):
-        h0 = torch.zeros(2, sent_embedding.shape[1], self.hidden_size).to(self.config.device)
-        c0 = torch.zeros(2, sent_embedding.shape[1], self.hidden_size).to(self.config.device)
-        output, _ = self.rnn(sent_embedding, (h0, c0))
-        output_d = torch.dropout(output, self.keep_prob, self.is_train)
-        return output_d
 
-
-
-    def cosine(self, seq1, seq2, weights=None):
+    def cosine(self, seq1, seq2):
         dim = seq1.shape[-1]
         norm1 = torch.norm(seq1 + 1e-5, dim=1, keepdim=True)
         norm2 = torch.norm(seq2 + 1e-5, dim=1, keepdim=True)
         sim = torch.matmul(seq1 / norm1, torch.transpose(seq2 / norm2, 1, 0))
         return sim
 
-    def att_match(self, mid, pat, mid_mask, pat_mask, hidden, keep_prob=1.0, is_train=True):
+    def att_match(self, mid, pat, mid_mask, pat_mask, keep_prob=1.0, is_train=True):
         mid_d = torch.dropout(mid, keep_prob, is_train)
         pat_d = torch.dropout(pat, keep_prob, is_train)
-        mid_a = self.attention_model2(mid_d, mask=mid_mask, keep_prob=keep_prob, is_train=is_train)
-        pat_a = self.attention_model2(pat_d, mask=pat_mask, keep_prob=keep_prob, is_train=is_train)
+        mid_a = self.attention_model(mid_d, mask=mid_mask, keep_prob=keep_prob, is_train=is_train)
+        pat_a = self.attention_model(pat_d, mask=pat_mask, keep_prob=keep_prob, is_train=is_train)
+        # import pdb; pdb.set_trace()
         mid_v = torch.sum(mid_a.unsqueeze(-1) * mid, dim=1)
         pat_v = torch.sum(pat_a.unsqueeze(-1) * pat, dim=1)
         pat_v_d = torch.sum(pat_a.unsqueeze(-1) * pat_d, dim=1)
@@ -127,6 +126,10 @@ class SoftMatch(nn.Module):
         pattern_rels = torch.from_numpy(pattern_rels).float().to(device)
         pats = torch.from_numpy(pats).long().to(device)
         weights = torch.from_numpy(weights).float().to(device)
+        sent_tokens = torch.from_numpy(sent_tokens).long().to(device)
+        pats_tokens = torch.from_numpy(pats_tokens).long().to(device)
+        sent_tokens_mask = torch.from_numpy(sent_tokens_mask).bool().to(device) 
+        pats_tokens_mask = torch.from_numpy(pats_tokens_mask).bool().to(device)
 
         rel_label = torch.argmax(rel_label, -1)
         pattern_rels_label = torch.argmax(pattern_rels, -1)
@@ -154,16 +157,14 @@ class SoftMatch(nn.Module):
         pat_embedding = self.get_embedding(pats)
 
         # encoder
-        sent_d = self.encoder(sent_embedding)
-        pat_d = self.encoder(pat_embedding)
 
+        sent_d = self.bert(sent_tokens, attention_mask=sent_tokens_mask)[0][:, 0, :]
+        pat_d = self.bert_no_grad(pats_tokens, attention_mask=pats_tokens_mask)[0][:, 0, :]
+        
 
-        # attention
-        sent_attn = self.attention_model(sent_d, sent_mask, self.keep_prob, self.is_train)
-        pat_attn = self.attention_model(pat_d, pat_mask, self.keep_prob, self.is_train)
 
         # similarity
-        sim, pat_sim = self.mean_match(mid_embedding, pat_embedding, mid_mask, pat_mask,
+        sim, pat_sim = self.att_match(mid_embedding, pat_embedding, mid_mask, pat_mask,
                                     self.keep_prob, self.is_train)
 
         neg_idxs = torch.matmul(pattern_rels, torch.transpose(pattern_rels, 1, 0))
@@ -173,11 +174,9 @@ class SoftMatch(nn.Module):
         pat_neg = torch.max(pat_neg - 1e30 * neg_idxs, dim=1)[0]
         l_sim = torch.sum(weights * (pat_pos + pat_neg), dim=0)
 
-        # pred
-        sent_attn2 = torch.sum(torch.unsqueeze(sent_attn, dim=-1) * sent_d, dim=1)
-        pat_attn2 = torch.sum(torch.unsqueeze(pat_attn, dim=-1) * pat_d, dim=1)
 
-        logit = self.fc_sent2rel(sent_attn2)
+
+        logit = self.fc_sent2rel(sent_d)
         pred = F.softmax(logit, dim=1)
 
         if self.is_train is True:
@@ -185,7 +184,7 @@ class SoftMatch(nn.Module):
             l_a = F.cross_entropy(logit[:self.config.gt_batch_size], rel_label[:self.config.gt_batch_size])
 
             xsim = sim[self.config.gt_batch_size:]
-            xsim = xsim.detach()
+            # xsim = xsim.detach()
             # xsim.requires_grad = False
             pseudo_rel = pattern_rels_label[torch.argmax(xsim, dim=1)]
             bound = torch.max(xsim, dim=1)[0]
@@ -193,11 +192,11 @@ class SoftMatch(nn.Module):
 
             l_u = torch.sum(weight * F.cross_entropy(logit[self.config.gt_batch_size:], pseudo_rel, reduction='none'))
 
-            pat2rel = self.fc_sent2rel(pat_attn2)
+            pat2rel = self.fc_pat2rel(pat_d)
             pat2rel_pred = F.softmax(pat2rel, dim=1)
             l_pat = F.cross_entropy(pat2rel_pred, pattern_rels_label)
-            # loss = l_a + self.config.alpha * l_pat + self.config.gamma * l_u + self.config.beta * l_sim
-            loss = l_a + self.config.alpha * l_pat + self.config.gamma * l_u
+            loss = l_a + self.config.alpha * l_pat + self.config.gamma * l_u + self.config.beta * l_sim
+            # loss = l_a + self.config.alpha * l_pat + self.config.beta * l_u
         else:
             loss = 0.0
 

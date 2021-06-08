@@ -5,6 +5,10 @@ import math
 import torch.nn.init as init
 import torch.nn as nn
 import torch
+from transformers import BertTokenizer
+
+tokenizer = BertTokenizer.from_pretrained('/home/ps/disk_sdb/yyr/codes/NEROtorch/pretrain_models/bert', do_lower_case=True)
+
 
 def get_pos(start, end, length, pad=None):
     res = list(range(-start, 0)) + [0] * (end - start + 1) + list(range(length - end - 1))
@@ -47,7 +51,7 @@ def get_patterns(config, word2idx_dict, filt=None):
 
     import semeval_constant as constant
     patterns = config.patterns
-    rels, pats = [], []
+    rels, pats, raws, raw_masks = [], [], [], []
     for pattern in patterns:
         rel, pat = pattern
         rel_id = constant.LABEL_TO_ID[rel]
@@ -58,7 +62,10 @@ def get_patterns(config, word2idx_dict, filt=None):
         rel[rel_id] = 1.
 
         pat = pat.split()
-
+        raw = ''.join(pat)
+        raw = np.asarray(tokenizer.encode(raw, add_special_tokens=True, padding='max_length', max_length=128, truncation=True))
+        raws.append(raw)
+        raw_masks.append((raw>0))
         pat = get_word(pat, word2idx_dict, pad=10)
         rels.append(rel)
         pats.append(pat)
@@ -66,11 +73,13 @@ def get_patterns(config, word2idx_dict, filt=None):
     rels = np.asarray(rels, dtype=np.float32)
     pats = np.asarray(pats, dtype=np.int32)
     weights = np.ones([num_pats], dtype=np.float32)
+    raws = np.asarray(raws)
+    raw_masks = np.array(raw_masks)
     """
     rel: [0,1,0]
     pat: embedding: 10*word_idx
     """
-    return {"pattern_rels": rels, "pats": pats, "weights": weights}
+    return {"pattern_rels": rels, "pats": pats, "weights": weights, "raws": raws, "raw_masks": raw_masks}
 
 
 def get_feeddict(model, batch, patterns, is_train=True):
@@ -102,7 +111,8 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
     batches = math.ceil(len(data) / batch_size)
     for i in range(batches):
         batch = data[i * batch_size: (i + 1) * batch_size]
-        # raw = list(map(lambda x: x["tokens"], batch))
+        raw = np.asarray(list(map(lambda x: tokenizer.encode(''.join(x["tokens"]), add_special_tokens=True, padding='max_length', max_length=128, truncation=True), batch)))
+        raw_mask = (raw>0)
         sent = np.asarray(list(map(lambda x: get_word(x["tokens"], word2idx_dict, pad=length), batch)), dtype=np.int32)
         mid = np.asarray(list(map(lambda x: get_word(x["tokens"][x["start"] - 1: x["end"] + 2], word2idx_dict, pad=length), batch)), dtype=np.int32)
         rel = np.asarray(list(map(lambda x: [1.0 if i == x["rel"] else 0. for i in range(config.num_class)], batch)), dtype=np.float32)
@@ -113,7 +123,7 @@ def get_batch(config, data, word2idx_dict, rel_dict=None, shuffle=True, pseudo=F
             rel: batch * num_relations * 1
             pat: batch * 1: 就是对应哪条pattern， -1代表没有对应的
         """
-        yield {"sent": sent, "mid": mid, "rel": rel, "pat": pat}
+        yield {"sent": sent, "mid": mid, "rel": rel, "pat": pat, "raw": raw, "raw_mask": raw_mask}
 
 
 def merge_batch(batch1, batch2):
@@ -178,7 +188,9 @@ def weight_init(m):
             init.constant_(m.bias.data, 0)
         elif isinstance(m, nn.Linear):
             init.xavier_normal_(m.weight.data)
-            init.normal_(m.bias.data)
+
+            if m.bias is not None:
+                init.normal_(m.bias.data)
         elif isinstance(m, nn.LSTM):
             for param in m.parameters():
                 if len(param.shape) >= 2:
