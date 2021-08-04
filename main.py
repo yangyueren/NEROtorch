@@ -8,7 +8,6 @@ from collections import Counter
 from util import get_batch, get_patterns, merge_batch, weight_init
 
 from models.pat_match import Pat_Match
-# from models.soft_match_torch import SoftMatch
 from models.soft_match_bert import SoftMatch
 
 tqdm.monitor_interval = 0

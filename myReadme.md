@@ -7,3 +7,6 @@ pattern.json格式：
 [["Cause-Effect(e1,e2)", "SUBJ-O caused a OBJ-O"], ["Cause-Effect(e1,e2)", "SUBJ-O cause OBJ-O"]]
 
 在semeval_loader.py/read_glove中加载中文word embedding
+
+
+## 基于bert的中文NERO模型

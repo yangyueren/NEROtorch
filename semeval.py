@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(description='NERO args.')
 
 parser.add_argument("--dataset", type=str, default="semeval", help='')
 parser.add_argument("--mode", type=str, default="regd", help="pretrain / pseudo / regd")
-parser.add_argument("--gpu", type=str, default="1", help="The GPU to run on")
+parser.add_argument("--gpu", type=str, default="3", help="The GPU to run on")
 
 
 parser.add_argument("--pattern_file", type=str, default="./data/supply_cooperate_20210518_data/yanbao_ic_pattern.json", help="")
